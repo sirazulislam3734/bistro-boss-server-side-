@@ -47,6 +47,7 @@ async function run() {
       if (!req.headers.authorization) {
         return res.status(401).send("Forbidden Access");
       }
+      console.log('auth', req.headers.authorization);
       const token = req.headers.authorization.split(" ")[1];
       jwt.verify(token, "asdfghjkl1234567890", (err, decoded) => {
         if (err) return res.status(403).send("Invalid or Expired Token");
@@ -192,14 +193,14 @@ async function run() {
     });
 
     // Payment intent
-    app.get('/payments/:email',verifyToken, async (req, res) => {
-      const query = {email: req.params.email};
-      if( req.params.email !== req.decoded.email){
-        return res.status(401).send({message: 'Unauthorized'});
+    app.get("/payments/:email", verifyToken, async (req, res) => {
+      const query = { email: req.params.email };
+      if (req.params.email !== req.decoded.email) {
+        return res.status(401).send({ message: "Unauthorized" });
       }
       const result = await paymentsCollection.find(query).toArray();
       res.send(result);
-    })
+    });
 
     app.post("/create-payment-intent", async (req, res) => {
       const { price } = req.body;
@@ -227,6 +228,31 @@ async function run() {
       const deleteResult = cardsCollection.deleteMany(query);
       res.send({ paymentResult, deleteResult });
     });
+
+    // stats and analytics
+    app.get("/admin-stats", verifyToken, verifyAdmin, async (req, res) => {
+      const users = await usersCollection.estimatedDocumentCount();
+      const menuItems = await menusCollection.estimatedDocumentCount();
+      const orders = await paymentsCollection.estimatedDocumentCount();
+      // const payments = await paymentsCollection.find().toArray();
+      // const revenue = payments.reduce(
+      //   (total, payment) => total + payment.price,
+      //   0
+      // );
+      const result = await paymentsCollection.aggregate([
+          {
+            $group: {
+              _id: null,
+              total: { $sum: "$price" },
+            },
+          },
+        ])
+        .toArray();
+      const revenue = result.length > 0 ? result[0].total : 0;
+      console.log('revenue', orders);
+      res.send({ users, menuItems, orders, revenue});
+    });
+    
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
